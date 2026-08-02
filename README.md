@@ -1,21 +1,25 @@
-# shadcn/ui monorepo template
+# Feature Planning:
 
-This is a Next.js monorepo template with shadcn/ui.
 
-## Adding components
 
-To add components to your app, run the following command at the root of your `web` app:
 
-```bash
-pnpm dlx shadcn@latest add button -c apps/web
-```
 
-This will place the ui components in the `packages/ui/src/components` directory.
+# Engine designing
 
-## Using components
 
-To use the components in your app, import them from the `ui` package.
+# Types determination:
 
-```tsx
-import { Button } from "@workspace/ui/components/button";
-```
+# From the API:
+
+1. Create Order:
+2. Cancel Order:
+3. Get the Depth:
+4. Get Open Orders:
+
+# To the API:
+
+1. Order Placed:
+2. Order Cancelled:
+3. Open Orders:
+4. Depth:
+
