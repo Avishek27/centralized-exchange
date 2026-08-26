@@ -1,3 +1,4 @@
+import { RedisManager } from "../RedisManager";
 import { CANCEL_ORDER, CREATE_ORDER, GET_DEPTH, GET_OPEN_ORDER, ONRAMP, type MessageFromApi } from "../types/fromApi";
 import { DEPTH_RESPONSE, ON_RAMP_RESPONSE, OPEN_ORDER_RESPONSE, ORDER_CANCELLED, ORDER_PLACED } from "../types/toApi";
 import { OrderBook, type Fill, type Order } from "./OrderBook";
@@ -54,7 +55,7 @@ private userBalance = new Map<string,UserBalance>();
     );
     }
 
-public process(message: MessageFromApi){
+public process({message,clientId}: {message: MessageFromApi,clientId: string}){
    //If type is Create Order
    /*
      1. Find the orderbook
@@ -69,22 +70,40 @@ public process(message: MessageFromApi){
         
     const {executedQty,fills,orderId} = this.createOrder(message.data.market,message.data.price,message.data.quantity,message.data.side,message.data.userId);
     //Now send to API via Redis
-     return {
+    try{
+        RedisManager.getInstance().sendToApi(clientId,{
         type: ORDER_PLACED,
         payload: {
             executedQty,
             fills,
             orderId
         }
-     };
+     });
+    }catch(e){
+      console.log(e);
+
+      RedisManager.getInstance().sendToApi(clientId,{
+        type: ORDER_PLACED,
+        payload: {
+            executedQty: 0,
+            fills: [],
+            orderId,
+        }
+      })
+    }
+     break;
     
     case CANCEL_ORDER:
         const cancelledOrderId = this.cancelOrder(message.data.market,message.data.orderId);
+        //sending to the Redis PUB SUB
 
-        return {
+        RedisManager.getInstance().sendToApi(clientId,{
             type: ORDER_CANCELLED,
-            payload: cancelledOrderId,
-        }
+            payload: {
+               orderId: cancelledOrderId,
+            }
+        });
+        break;
         
      case GET_OPEN_ORDER:
       
@@ -95,11 +114,13 @@ public process(message: MessageFromApi){
      }
      
      const openOrders = openOrderBook.getOpenorders(message.data.userId);
+     //sending to Redis
 
-     return {
+     RedisManager.getInstance().sendToApi(clientId,{
         type: OPEN_ORDER_RESPONSE,
         payload: openOrders,
-     }
+     })
+     break;
 
      case GET_DEPTH:
        
@@ -110,22 +131,35 @@ public process(message: MessageFromApi){
        }
 
        const depth = orderBook.getDepth();
+       
+       //sending to Redis
 
-       return {
+       RedisManager.getInstance().sendToApi(clientId,{
         type: DEPTH_RESPONSE,
         payload: depth,
-       }
+       })
+       break;
+
      case ONRAMP:
        const balanceAmount = this.onRamp(message.data.userId,message.data.amount);
        
-       return {
+       //sending to Redis
+
+       RedisManager.getInstance().sendToApi(clientId,{
         type: ON_RAMP_RESPONSE,
-        payload: balanceAmount.toString(),
-       }
+        payload: {
+            amount: balanceAmount.toString(),
+        }
+       })
+       break;
   }
      
 }
 
+//TODO: Why this function????
+addOrderBook(orderBook: OrderBook){
+    this.orderBooks.push(orderBook);
+}
 
 private cancelOrder(market: string,orderId: string){
    const cancelOrderBook = this.orderBooks.find(o => o.ticker() === market);
