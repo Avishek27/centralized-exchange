@@ -255,6 +255,8 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
             fills,
             orderId: order.orderId
         }
+        //update the respective ws
+        //update the db
 
 }
 
