@@ -53,6 +53,13 @@ private userBalance = new Map<string,UserBalance>();
        this.orderBooks.push(
         new OrderBook("TATA", "INR", 0)
     );
+    // Temporary testing balance
+    this.userBalance.set("seller1", {
+        TATA: {
+            available: 100,
+            lockedOut: 0
+        }
+    });
     }
 
 public process({message,clientId}: {message: MessageFromApi,clientId: string}){
@@ -197,6 +204,7 @@ private cancelOrder(market: string,orderId: string){
       cancelUserQuoteBalance.available += remainingLockedAmount;
       cancelUserQuoteBalance.lockedOut -= remainingLockedAmount;
       
+      
    }else{
      //side is sell
 
@@ -216,10 +224,27 @@ private cancelOrder(market: string,orderId: string){
      cancelUserBaseBalance.lockedOut -= remainingLockedAmount;
    
    }
+   this.sendUpdatedDepthAt(order.price.toString(),market);
     return order.orderId;
 }
 
+private sendUpdatedDepthAt(price: string,market: string){
+    const orderbook = this.orderBooks.find(o => o.ticker() === market);
+    if(!orderbook)return;
+    const depth = orderbook.getDepth();
 
+    const updatedBid = depth.bids.filter(x => x[0] === price);
+    const updatedAsk = depth.asks.filter(x => x[0] === price);
+
+    RedisManager.getInstance().publishMessage(`depth@${market}`,{
+        stream: `depth@${market}`,
+        data: {
+            bids: updatedBid.length ? updatedBid : [[price,'0']],
+            asks: updatedAsk.length ? updatedAsk : [[price, '0']],
+            e: 'depth',
+        }
+    });
+}
 
 
 private createOrder(market: string,price: string,quantity: string,side: "buy" | "sell",userId: string){
@@ -250,14 +275,71 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
         const { executedQty,fills } = orderbook.addOrder(order);
         //update the balances
        this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills);
-        return {
+        
+        //update the respective ws
+        this.publishWsDepthUpdates(fills,price,side,market);
+        this.publishTradeMessage(fills,userId,market);
+        //update the db
+         return {
             executedQty,
             fills,
             orderId: order.orderId
         }
-        //update the respective ws
-        //update the db
+}
 
+private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',market: string){
+    const orderbook = this.orderBooks.find(o => o.ticker() === market);
+    
+    if(!orderbook)return;
+
+    const depth = orderbook.getDepth();
+
+    if(side === "buy"){
+        //Show me only the SELL price levels that were involved in the trade.
+        const updatedAsks = depth.asks.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
+        //Check whether the BUY order itself is still sitting in the bid book at its own price.
+        const updatedBid = depth.bids.find(x => x[0] === price);
+        console.log("Publish the ws depth trades");
+
+        RedisManager.getInstance().publishMessage(`depth@${market}`,{
+            stream: `depth@${market}`,
+            data: {
+                asks: updatedAsks,
+                bids: updatedBid ? [updatedBid] : [],
+                e: 'depth',
+            }
+        });
+    }
+    if(side === "sell"){
+        const updatedBids = depth.bids.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
+        const updatedAsk = depth.asks.find(x => x[0] === price);
+        console.log("Publish the ws depth trades");
+
+        RedisManager.getInstance().publishMessage(`depth@${market}`,{
+            stream: `depth@${market}`,
+            data: {
+                asks: updatedAsk ? [updatedAsk] : [],
+                bids: updatedBids,
+                e: 'depth',
+            }
+        });
+    }
+}
+
+private publishTradeMessage(fills: Fill[],userId: string,market: string){
+   fills.forEach(fill => {
+    RedisManager.getInstance().publishMessage(`trade@${market}`,{
+        stream: `trade@${market}`,
+        data: {
+            e: 'trade',
+            tradeId: fill.tradeId.toString(),
+            isBuyerMaker: fill.otherUserId === userId,//TODO: Verify with an example
+            price: fill.price.toString(),
+            executedQuantity: fill.quantity,
+            market, 
+        }
+    })
+   })
 }
 
 private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "buy" | "sell",executedQty: number,fills: Fill[]){

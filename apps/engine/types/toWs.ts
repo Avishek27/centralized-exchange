@@ -1,10 +1,10 @@
 
 
 export type DepthMessage = {
-    type: "depth",
-    data:{
-        bids?: [string,string][],
-        asks?: [string,string][],
+    stream: string,
+    data: {
+        bids: [string,string][],
+        asks: [string,string][],
         e: "depth"
     }
 }
@@ -21,4 +21,5 @@ export type TradeMessage = {
     }
 }
 
-export type OutgoingMessage = DepthMessage | TradeMessage;
+
+export type WsMessage = DepthMessage | TradeMessage;
