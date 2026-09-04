@@ -9,7 +9,9 @@ export class SubscriptionManager{
 
 
     private constructor(){
-        this.redisClient = createClient();
+        this.redisClient = createClient({
+  url: process.env.REDIS_URL
+});;
         this.redisClient.connect();
     }
 

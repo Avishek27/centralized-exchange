@@ -1,0 +1,90 @@
+services: 
+
+
+  redis: 
+    image: redis:latest
+    container_name: exchange-redis
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+  
+
+  api:
+    build: 
+      context: .
+      dockerfile: apps/api/Dockerfile
+
+    container_name: exchange-api
+
+    restart: unless-stopped
+
+    depends_on:
+      - redis
+
+    environment:
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+
+    ports:
+      - "3000:3000"
+  
+
+  engine:
+    build: 
+      context: .
+      dockerfile: apps/engine/Dockerfile
+
+    container_name: exchange-engine
+
+    restart: unless-stopped
+
+    depends_on:
+      - redis
+
+    environment:
+      REDIS_URL: redis://redis:6379
+
+
+  websocket:
+    build: 
+      context: .
+      dockerfile: apps/websocket/Dockerfile
+
+    container_name: exchange-websocket
+
+    restart: unless-stopped
+
+    depends_on:
+      - redis
+
+    environment:
+      PORT: 3001
+      REDIS_URL: redis://redis:6379
+
+    ports:
+      - "3001:3001"
+
+
+  db:
+    build: 
+      context: .
+      dockerfile: apps/db/Dockerfile
+
+    container_name: exchange-db
+
+    restart: unless-stopped
+
+    depends_on:
+      - redis
+
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+
+volumes:
+  redis_data:
+

@@ -1,6 +1,7 @@
 import { RedisManager } from "../RedisManager";
 import { CANCEL_ORDER, CREATE_ORDER, GET_DEPTH, GET_OPEN_ORDER, ONRAMP, type MessageFromApi } from "../types/fromApi";
 import { DEPTH_RESPONSE, ON_RAMP_RESPONSE, OPEN_ORDER_RESPONSE, ORDER_CANCELLED, ORDER_PLACED } from "../types/toApi";
+import { ORDER_UPDATE, TRADE_ADDED } from "../types/toDB";
 import { OrderBook, type Fill, type Order } from "./OrderBook";
 
 interface AssetBalance{
@@ -275,11 +276,13 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
         const { executedQty,fills } = orderbook.addOrder(order);
         //update the balances
        this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills);
-        
+        //update the db
+        this.createDbTrades(fills,side,market);
+        this.updateDbUpdates(fills,order,executedQty,market);
         //update the respective ws
         this.publishWsDepthUpdates(fills,price,side,market);
         this.publishTradeMessage(fills,userId,market);
-        //update the db
+        
          return {
             executedQty,
             fills,
@@ -342,6 +345,45 @@ private publishTradeMessage(fills: Fill[],userId: string,market: string){
    })
 }
 
+private updateDbUpdates(fills: Fill[],order: Order,executedQty: number,market: string){
+    fills.forEach(fill => RedisManager.getInstance().pushMessage({
+        type: ORDER_UPDATE,
+        data: {
+            orderId: fill.makerOrderId,
+            executedQty: fill.quantity,
+        }
+    }));
+    
+    RedisManager.getInstance().pushMessage({
+        type: ORDER_UPDATE,
+        data: {
+            orderId: order.orderId,
+            executedQty: executedQty,
+            market,
+            price: order.price.toString(),
+            quantity: order.quantity.toString(),
+            side: order.side,
+        }
+    })
+}
+
+
+private createDbTrades(fills: Fill[],side: 'buy' | 'sell',market: string){
+     fills.forEach(fill => {
+        RedisManager.getInstance().pushMessage({
+            type: TRADE_ADDED,
+            data: {
+                tradeId: fill.tradeId.toString(),
+                isBuyerMaker: side === 'sell',
+                price: fill.price.toString(),
+                quantity: fill.quantity.toString(),
+                quoteQuantity: (fill.quantity * fill.price).toString(),
+                timeStamp: Date.now(),
+                market,
+            }
+        })
+     })
+}
 private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "buy" | "sell",executedQty: number,fills: Fill[]){
    
     if(side === "buy"){
