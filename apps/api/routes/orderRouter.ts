@@ -61,7 +61,7 @@ orderRouter.delete('/order',async (req,res) => {
     res.json(response.payload);
 });
 
-orderRouter.get('/order',async(req,res) => {
+orderRouter.get('/open_order',async(req,res) => {
     //TODO: Zod validation!!!
 
     const {userId,market} = req.query;
@@ -82,7 +82,7 @@ orderRouter.get('/order',async(req,res) => {
 });
 
 
-orderRouter.get('/order',async (req,res) => {
+orderRouter.get('/depth',async (req,res) => {
     //TODO: ZOD Validation
 
     const {market} = req.query;

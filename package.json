@@ -10,10 +10,12 @@
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {
+    "@types/axios": "^0.14.4",
     "@types/redis": "^4.0.11",
     "@types/ws": "^8.18.1",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
+    "axios": "^1.20.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "redis": "^6.2.1",
