@@ -280,6 +280,7 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
         this.createDbTrades(fills,side,market);
         this.updateDbUpdates(fills,order,executedQty,market);
         //update the respective ws
+        console.log("DEPTH UPDATE BEING PUBLISHED:");
         this.publishWsDepthUpdates(fills,price,side,market);
         this.publishTradeMessage(fills,userId,market);
         
@@ -299,11 +300,34 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
 
     if(side === "buy"){
         //Show me only the SELL price levels that were involved in the trade.
-        const updatedAsks = depth.asks.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
+        /**
+         * REF
+         */
+        const fillPrices = [
+            ...new Set(fills.map(fill => fill.price.toString()))
+        ];
+
+        const updatedAsks: [string, string][] = fillPrices.map(fillPrice => {
+            const existingAsk = depth.asks.find(
+                ([askPrice]) => askPrice === fillPrice
+            );
+
+            if (existingAsk) {
+                return existingAsk;
+            }
+
+            return [fillPrice, "0"];
+        });
+
+        //const updatedAsks = depth.asks.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
         //Check whether the BUY order itself is still sitting in the bid book at its own price.
         const updatedBid = depth.bids.find(x => x[0] === price);
         console.log("Publish the ws depth trades");
-
+        console.log("WS DEPTH PAYLOAD:", {
+            asks: updatedAsks,
+            bids: updatedBid ? [updatedBid] : [],
+            e: "depth"
+        });
         RedisManager.getInstance().publishMessage(`depth@${market}`,{
             stream: `depth@${market}`,
             data: {
@@ -314,10 +338,45 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
         });
     }
     if(side === "sell"){
-        const updatedBids = depth.bids.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
-        const updatedAsk = depth.asks.find(x => x[0] === price);
+        // const updatedBids = depth.bids.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
+        // const updatedAsk = depth.asks.find(x => x[0] === price);
+        // console.log("Publish the ws depth trades");
+        // console.log("WS DEPTH PAYLOAD:", {
+        //     asks: updatedAsk ? [updatedAsk] : [],
+        //     bids: updatedBids,
+        //     e: 'depth',
+        // });
+        /**
+         * REF
+         */
+        const fillPrices = [
+            ...new Set(fills.map(fill => fill.price.toString()))
+        ];
+
+        const updatedBids: [string, string][] = fillPrices.map(fillPrice => {
+
+            const existingBid = depth.bids.find(
+                ([bidPrice]) => bidPrice === fillPrice
+            );
+
+            if (existingBid) {
+                return existingBid;
+            }
+
+            return [fillPrice, "0"];
+        });
+
+        const updatedAsk = depth.asks.find(
+            x => x[0] === price
+        );
+
         console.log("Publish the ws depth trades");
 
+        console.log("WS DEPTH PAYLOAD:", {
+            asks: updatedAsk ? [updatedAsk] : [],
+            bids: updatedBids,
+            e: "depth",
+        });
         RedisManager.getInstance().publishMessage(`depth@${market}`,{
             stream: `depth@${market}`,
             data: {
@@ -331,17 +390,36 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
 
 private publishTradeMessage(fills: Fill[],userId: string,market: string){
    fills.forEach(fill => {
-    RedisManager.getInstance().publishMessage(`trade@${market}`,{
-        stream: `trade@${market}`,
-        data: {
-            e: 'trade',
-            tradeId: fill.tradeId.toString(),
-            isBuyerMaker: fill.otherUserId === userId,//TODO: Verify with an example
-            price: fill.price.toString(),
-            executedQuantity: fill.quantity,
-            market, 
-        }
-    })
+    
+    // RedisManager.getInstance().publishMessage(`trade@${market}`,{
+    //     stream: `trade@${market}`,
+    //     data: {
+    //         e: 'trade',
+    //         tradeId: fill.tradeId.toString(),
+    //         isBuyerMaker: fill.otherUserId === userId,//TODO: Verify with an example
+    //         price: fill.price.toString(),
+    //         executedQuantity: fill.quantity,
+    //         market, 
+    //     }
+    // })
+    const payload = {
+      stream: `trade@${market}`,
+      data: {
+        e: "trade" as const,
+        tradeId: fill.tradeId.toString(),
+        isBuyerMaker: fill.otherUserId === userId,
+        price: fill.price.toString(),
+        executedQuantity: fill.quantity,
+        market,
+      }
+    };
+
+    console.log("TRADE WS PAYLOAD:", payload);
+
+    RedisManager.getInstance().publishMessage(
+      `trade@${market}`,
+      payload
+    );
    })
 }
 

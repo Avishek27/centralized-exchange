@@ -1,4 +1,5 @@
-import { DepthComponent } from "@/components/Depth"
+import { DepthComponent } from "@/components/Depth/Depth"
+import TradeComponent from "@/components/Trades"
 import { Button } from "@workspace/ui/components/button"
 
 export default function Page() {
@@ -11,6 +12,7 @@ export default function Page() {
           <p>We&apos;ve already added the button component for you.</p>
           <Button className="mt-2">Button</Button>
           <DepthComponent/>
+          <TradeComponent/>
         </div>
         <div className="text-muted-foreground font-mono text-xs">
           (Press <kbd>d</kbd> to toggle dark mode)
