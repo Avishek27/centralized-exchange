@@ -1,6 +1,115 @@
 import { createClient } from "redis";
-import { Client } from "pg";
 import { ORDER_UPDATE, TRADE_ADDED, type dbMessage } from "./types/fromEngine";
+import { prisma } from "@repo/db";
+
+
+const getMinuteBucket = (date: Date) => {
+  const bucket = new Date(date);
+
+  bucket.setSeconds(0);
+  bucket.setMilliseconds(0);
+
+  return bucket;
+};
+
+
+async function updateKline1m(
+  market: string,
+  price: number,
+  quantity: number,
+  tradeTime: Date
+) {
+  const bucket = getMinuteBucket(tradeTime);
+
+  const existingKline = await prisma.kline1m.findUnique({
+    where: {
+      market_bucket: {
+        market,
+        bucket,
+      },
+    },
+  });
+
+  console.log("KLINE INPUT:", {
+  market,
+  originalPrice: price,
+  convertedPrice: Number(price),
+  originalQuantity: quantity,
+  convertedQuantity: Number(quantity),
+  tradeTime,
+});
+  // First trade in this minute
+  if (!existingKline) {
+    
+    await prisma.kline1m.create({
+      data: {
+        market,
+        bucket,
+
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+
+        volume: quantity,
+        quoteVolume: price * quantity,
+
+        trades: 1,
+      },
+    });
+
+    console.log("New 1m candle created:", {
+      market,
+      bucket,
+      price,
+    });
+
+    return;
+  }
+
+  // More trades occurring in the same minute
+  await prisma.kline1m.update({
+    where: {
+      market_bucket: {
+        market,
+        bucket,
+      },
+    },
+
+    data: {
+      high: Math.max(
+        Number(existingKline.high),
+        price
+      ),
+
+      low: Math.min(
+        Number(existingKline.low),
+        price
+      ),
+
+      close: price,
+
+      volume:
+        Number(existingKline.volume) +
+        quantity,
+
+      quoteVolume:
+        Number(existingKline.quoteVolume) +
+        price * quantity,
+
+      trades: {
+        increment: 1,
+      },
+    },
+  });
+
+  console.log("1m candle updated:", {
+    market,
+    bucket,
+    price,
+  });
+}
+
 
 
 async function main() {
@@ -15,16 +124,6 @@ async function main() {
 
     console.log("Connected to Redis");
 
-
-    // ---------------- PostgreSQL / Neon ----------------
-
-    const pgClient = new Client({
-        connectionString: process.env.DATABASE_URL,
-    });
-
-    await pgClient.connect();
-
-    console.log("Connected to Neon");
 
 
     // ---------------- DB Worker ----------------
@@ -54,33 +153,38 @@ async function main() {
                 market
             } = data.data;
 
-            const query = `
-                INSERT INTO trades (
-                    trade_id,
-                    is_buyer_maker,
-                    price,
-                    quantity,
-                    quote_quantity,
-                    trade_time,
-                    market
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            try{
+                const existingTrade = await prisma.trade.findUnique({
+                    where: {
+                        tradeId: tradeId.toString(),
+                    },
+                });
 
-                ON CONFLICT (trade_id)
-                DO NOTHING
-            `;
-
-            await pgClient.query(query, [
-                tradeId,
-                isBuyerMaker,
-                price,
-                quantity,
-                quoteQuantity,
-                new Date(timeStamp),
-                market
-            ]);
-
-            console.log("Trade inserted:", tradeId);
+                if (!existingTrade) {
+                    const tradeTime = new Date(timeStamp);
+                    await prisma.trade.create({
+                        data: {
+                            tradeId: tradeId.toString(),
+                            isBuyerMaker,
+                            price,
+                            quantity,
+                            quoteQuantity,
+                            tradeTime,
+                            market,
+                        },
+                    });
+                    await updateKline1m(
+                        market,
+                        Number(price),
+                        Number(quantity),
+                        tradeTime
+                    );
+                    
+                }
+            }catch(e){
+               console.log("error",e);
+            }
+            
         }
 
 
@@ -104,57 +208,47 @@ async function main() {
                 side !== undefined
             ) {
 
-                const query = `
-                    INSERT INTO orders (
-                        order_id,
-                        executed_qty,
+                await prisma.order.upsert({
+                    where: {
+                        orderId,
+                    },
+
+                    create: {
+                        orderId,
+                        executedQty,
                         market,
                         price,
                         quantity,
-                        side
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                        side,
+                    },
 
-                    ON CONFLICT (order_id)
-                    DO UPDATE SET
-                        executed_qty = EXCLUDED.executed_qty,
-                        market = EXCLUDED.market,
-                        price = EXCLUDED.price,
-                        quantity = EXCLUDED.quantity,
-                        side = EXCLUDED.side,
-                        updated_at = NOW()
-                `;
-
-                await pgClient.query(query, [
-                    orderId,
-                    executedQty,
-                    market,
-                    price,
-                    quantity,
-                    side
-                ]);
+                    update: {
+                        executedQty,
+                        market,
+                        price,
+                        quantity,
+                        side,
+                    },
+                });
 
                 console.log(
                     "Order inserted/updated:",
                     orderId
                 );
-
             } else {
-
                 // Existing maker order got filled
 
-                const query = `
-                    UPDATE orders
-                    SET
-                        executed_qty = executed_qty + $1,
-                        updated_at = NOW()
-                    WHERE order_id = $2
-                `;
+                await prisma.order.update({
+                    where: {
+                        orderId,
+                    },
 
-                await pgClient.query(query, [
-                    executedQty,
-                    orderId
-                ]);
+                    data: {
+                        executedQty: {
+                            increment: executedQty,
+                        },
+                    },
+                });
 
                 console.log(
                     "Maker order updated:",

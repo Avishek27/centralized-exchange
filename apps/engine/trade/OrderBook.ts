@@ -29,20 +29,35 @@ export interface Fill{
     otherUserId: string;//existing UserID in orderbook
 }
 
+let lastTimestamp = 0;
+let sequence = 0;
+
+function generateTradeId(): number {
+  const timestamp = Date.now();
+
+  if (timestamp === lastTimestamp) {
+    sequence++;
+  } else {
+    lastTimestamp = timestamp;
+    sequence = 0;
+  }
+
+  return timestamp * 1000 + sequence;
+}
+
+
 export class OrderBook{
   
    private baseAsset: string;
    private quoteAsset: string;
     bids: Order[];
     asks: Order[];
-   private lastTradeId: number;
 
-    constructor(baseAsset: string,quoteAsset:string,lastTradeId: number){
+    constructor(baseAsset: string,quoteAsset:string){
        this.baseAsset = baseAsset;
        this.quoteAsset = quoteAsset;
        this.bids = [];
        this.asks = [];
-       this.lastTradeId = lastTradeId || 0;
     }
     
     ticker(){
@@ -175,7 +190,7 @@ For each item in the array:
            fills.push({
             price: this.asks[i]!.price,
             quantity: filledQty,
-            tradeId: this.lastTradeId++,
+            tradeId: generateTradeId(),
             otherUserId: this.asks[i]!.userId,
             makerOrderId: this.asks[i]!.orderId,
            })
@@ -207,7 +222,7 @@ For each item in the array:
            fills.push({
             price: this.bids[i]!.price,
             quantity: filledQty,
-            tradeId: this.lastTradeId++,
+            tradeId: generateTradeId(),
             otherUserId: this.bids[i]!.userId,
             makerOrderId: this.bids[i]!.orderId,
            })

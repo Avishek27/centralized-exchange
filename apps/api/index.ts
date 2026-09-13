@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { orderRouter } from "./routes/orderRouter";
+import { klines } from "./routes/klines";
 
 
 
@@ -13,7 +14,7 @@ app.use(express.json());
 
 
 app.use("/api/v1/orderRouter",orderRouter);
-
+app.use("/api/v1/klines",klines);
 
 
 

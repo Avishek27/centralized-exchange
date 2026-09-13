@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Order {
+  orderId     String   @id @map("order_id")
+  executedQty Decimal  @default(0) @map("executed_qty") @db.Decimal
+  market      String?
+  price       Decimal? @db.Decimal
+  quantity    Decimal? @db.Decimal
+  side        String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("orders")
+}
+
+model Trade {
+  tradeId       String   @id @map("trade_id")
+  isBuyerMaker  Boolean  @map("is_buyer_maker")
+  price         Decimal  @db.Decimal
+  quantity      Decimal  @db.Decimal
+  quoteQuantity Decimal  @map("quote_quantity") @db.Decimal
+  tradeTime     DateTime @map("trade_time") @db.Timestamptz(6)
+  market        String
+
+  @@map("trades")
+}
+
+model Kline1m {
+  id          String   @id @default(cuid())
+  market      String
+  bucket      DateTime
+  open        Decimal
+  high        Decimal
+  low         Decimal
+  close       Decimal
+  volume      Decimal
+  quoteVolume Decimal
+  trades      Int
+
+  @@unique([market, bucket])
+  @@map("klines_1m")
+}

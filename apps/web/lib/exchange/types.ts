@@ -10,3 +10,11 @@
     executedQuantity: number,
     market: string, 
  }
+
+ export type Order = {
+    market: string,
+    quantity: string,
+    side: "buy" | "sell",
+    userId: string,
+    price: string,
+ }

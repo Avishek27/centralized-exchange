@@ -52,7 +52,7 @@ private userBalance = new Map<string,UserBalance>();
 
     constructor(){
        this.orderBooks.push(
-        new OrderBook("TATA", "INR", 0)
+        new OrderBook("TATA", "INR")
     );
     // Temporary testing balance
     this.userBalance.set("seller1", {
