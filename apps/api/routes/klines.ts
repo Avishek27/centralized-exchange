@@ -42,6 +42,20 @@ klines.get("/",async (req,res) => {
             error: "Invalid startTime or endTime"
         });
     }
+
+
+    console.log("KLINE PARAMS:", {
+    market,
+    interval,
+    startTime,
+    endTime
+  });
+
+  console.log(
+    "DATABASE URL EXISTS:",
+    !!process.env.DATABASE_URL
+  );
+
 try {
     const klines = await prisma.kline1m.findMany({
       where: {
@@ -82,7 +96,11 @@ try {
     );
 
     return res.status(500).json({
-      error: "Failed to fetch klines"
+      error: "Failed to fetch klines",
+      details:
+        error instanceof Error
+          ? error.message
+          : String(error),
     });
   }
 

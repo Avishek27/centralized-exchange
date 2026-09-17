@@ -1,10 +1,12 @@
 "use client"
 
+import ChartComponent from "./ChartComponent";
+
 
 const ChartManager = () =>{
     return (
         <div>
-            ChartManger
+            <ChartComponent/>
         </div>
     )
 }

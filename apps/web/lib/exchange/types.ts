@@ -18,3 +18,25 @@
     userId: string,
     price: string,
  }
+
+ export type Kline = {
+  start: number;
+
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+
+  volume: string;
+  quoteVolume: string;
+
+  trades: number;
+};
+
+export type Candle = {
+  time: UTCTimestamp;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};

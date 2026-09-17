@@ -15,7 +15,7 @@ const MarketPage = () => {
             </div>
            
            <div className="flex flex-1 flex-col items-stretch lg:flex-row">
-        <div className="flex w-full min-w-0 flex-col lg:w-2/3 border-r-2 border-gray-400">
+        <div className="flex w-full min-w-0 flex-col h-[600px] lg:w-2/3 border-r-2 border-gray-400">
           <ChartManager />
         </div>
 
