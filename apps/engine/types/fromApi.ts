@@ -50,6 +50,7 @@ export type MessageFromApi = {
     type: typeof ONRAMP,
     data: {
         userId: string,
+        asset: "INR" | "TATA",
         amount: number,
     }
 }

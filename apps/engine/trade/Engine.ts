@@ -1,7 +1,8 @@
+import { prisma } from "@repo/db";
 import { RedisManager } from "../RedisManager";
 import { CANCEL_ORDER, CREATE_ORDER, GET_DEPTH, GET_OPEN_ORDER, ONRAMP, type MessageFromApi } from "../types/fromApi";
 import { DEPTH_RESPONSE, ON_RAMP_RESPONSE, OPEN_ORDER_RESPONSE, ORDER_CANCELLED, ORDER_PLACED } from "../types/toApi";
-import { ORDER_UPDATE, TRADE_ADDED } from "../types/toDB";
+import { BALANCE_UPDATE, ORDER_UPDATE, TRADE_ADDED } from "../types/toDB";
 import { OrderBook, type Fill, type Order } from "./OrderBook";
 
 interface AssetBalance{
@@ -14,64 +15,31 @@ interface UserBalance {
     [asset: string]: AssetBalance;
 }
 
+
+
 export const BASE_CURRENCY = "INR";
-/*Responsibilities of the Engine
-
-1. Recieving message from the API through a REDIS Queue.
-2. Sending message through Redis PubSub to the API.
-3. Sending updates to the WS server
-4. Sending Data to the DB processor via REDIS Queue.
-
-
-1. Messages from the API to the Engine.
-
-a. Place an order: i/p: market,qty,side,userId.
-b. Get the Depth of the market: i/p: market
-c. Cancel an order: i/p: orderId,market,
-d. Get Open Orders: means all the open orders for the particular user, i/p: userId
-e. OnRamp: means add an amount to the userBalance, i/p: userId,amt.
-
-
-2. Sending Message to the API:
-
-a. Order is placed: o/p: executedQty,fills(which orders were used to fill the execQty),orderId.
-b. Order is cancelled: same o/p.
-c. GetDepth: we can delegate this to the OrderBook and give its output.
-d. GetOpenOrders: we can delegate this to the Orderbook and give its output.
-e. OnRamp: return the final amt in the user's balance.
-*/
-
-
 
 export class Engine{
 
 private orderBooks: OrderBook[] = [];
 
-private userBalance = new Map<string,UserBalance>();
 
+private balances: {
+    [userId: string]: UserBalance;
+} = {};
 
     constructor(){
        this.orderBooks.push(
         new OrderBook("TATA", "INR")
     );
-    // Temporary testing balance
-    this.userBalance.set("seller1", {
-        TATA: {
-            available: 100,
-            lockedOut: 0
-        }
-    });
+    }
+
+    public async init(){
+        await this.loadBalances();
+        console.log("Engine initialized with balances");
     }
 
 public process({message,clientId}: {message: MessageFromApi,clientId: string}){
-   //If type is Create Order
-   /*
-     1. Find the orderbook
-     2. Check and Lock the funds required for this order
-     3. Create an internal order
-     4. Update Balances
-     5. Return Result
-   */
   switch (message.type){
       
     case CREATE_ORDER:
@@ -149,14 +117,14 @@ public process({message,clientId}: {message: MessageFromApi,clientId: string}){
        break;
 
      case ONRAMP:
-       const balanceAmount = this.onRamp(message.data.userId,message.data.amount);
+       const balance = this.onRamp(message.data.userId,message.data.asset,message.data.amount);
        
-       //sending to Redis
-
        RedisManager.getInstance().sendToApi(clientId,{
         type: ON_RAMP_RESPONSE,
         payload: {
-            amount: balanceAmount.toString(),
+                asset: balance.asset,
+                available: balance.available.toString(),
+                locked: balance.locked.toString(),
         }
        })
        break;
@@ -175,7 +143,11 @@ private cancelOrder(market: string,orderId: string){
    if(!cancelOrderBook){
     throw new Error("OrderBook does not exists");
    }
-   const baseAsset = market.split("_")[0]!;
+   const [baseAsset,quoteAsset] = market.split("_");
+
+   if(!baseAsset || !quoteAsset){
+    throw new Error("Invalid Market");
+   }
 
    const order = cancelOrderBook.asks.find(ask => ask.orderId === orderId) || cancelOrderBook.bids.find(bid => bid.orderId === orderId);
 
@@ -184,45 +156,38 @@ private cancelOrder(market: string,orderId: string){
    }
    const side = order.side;
     
-   const cancelUserBalance = this.userBalance.get(order.userId);
-
-   if(!cancelUserBalance){
-     throw new Error("User balance does not exist");
-   }
-
    if(side === "buy"){
 
      cancelOrderBook.cancelBid(orderId);
 
-     const cancelUserQuoteBalance = cancelUserBalance[BASE_CURRENCY];
-    
-        if(!cancelUserQuoteBalance){
-           throw new Error("User has not Quote Asset balance");
-        }
+    const cancelUserQuoteBalance = this.getAssetBalance(order.userId,quoteAsset);
 
-      const remainingLockedAmount = (order.quantity - order.filled) * order.price;
+    const remainingLockedAmount = (order.quantity - order.filled) * order.price;
 
       cancelUserQuoteBalance.available += remainingLockedAmount;
       cancelUserQuoteBalance.lockedOut -= remainingLockedAmount;
+
+      this.publishBalanceUpdate(
+        order.userId,
+        quoteAsset
+    );
       
       
    }else{
-     //side is sell
 
      cancelOrderBook.cancelAsk(orderId);
 
-     //seller had the baseAsset balance------TATA
-
-    const cancelUserBaseBalance = cancelUserBalance[baseAsset];
-
-     if(!cancelUserBaseBalance){
-        throw new Error("User has not baseAsset balance");
-     }
+    const cancelUserBaseBalance = this.getAssetBalance(order.userId,baseAsset);
       
      const remainingLockedAmount = (order.quantity - order.filled);
 
      cancelUserBaseBalance.available += remainingLockedAmount;
      cancelUserBaseBalance.lockedOut -= remainingLockedAmount;
+
+     this.publishBalanceUpdate(
+        order.userId,
+        quoteAsset
+    );
    
    }
    this.sendUpdatedDepthAt(order.price.toString(),market);
@@ -249,13 +214,11 @@ private sendUpdatedDepthAt(price: string,market: string){
 
 
 private createOrder(market: string,price: string,quantity: string,side: "buy" | "sell",userId: string){
-    //1. Find the orderbook
         const orderbook = this.orderBooks.find(o => o.ticker() === market);
 
         if(!orderbook){
             throw new Error("No such orderbook found");
         }
-        //2. Check and Lock the funds required for this order
         //TODO: Create methods in orderbook to find these
         const baseAsset = market.split("_")[0]!;
         const quoteAsset = market.split("_")[1]!;
@@ -274,12 +237,10 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
         }
 
         const { executedQty,fills } = orderbook.addOrder(order);
-        //update the balances
-       this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills);
-        //update the db
+
+        this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills);
         this.createDbTrades(fills,side,market);
         this.updateDbUpdates(fills,order,executedQty,market);
-        //update the respective ws
         console.log("DEPTH UPDATE BEING PUBLISHED:");
         this.publishWsDepthUpdates(fills,price,side,market);
         this.publishTradeMessage(fills,userId,market);
@@ -319,7 +280,6 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
             return [fillPrice, "0"];
         });
 
-        //const updatedAsks = depth.asks.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
         //Check whether the BUY order itself is still sitting in the bid book at its own price.
         const updatedBid = depth.bids.find(x => x[0] === price);
         console.log("Publish the ws depth trades");
@@ -338,14 +298,6 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
         });
     }
     if(side === "sell"){
-        // const updatedBids = depth.bids.filter(x => fills.map(f => f.price.toString()).includes(x[0]));
-        // const updatedAsk = depth.asks.find(x => x[0] === price);
-        // console.log("Publish the ws depth trades");
-        // console.log("WS DEPTH PAYLOAD:", {
-        //     asks: updatedAsk ? [updatedAsk] : [],
-        //     bids: updatedBids,
-        //     e: 'depth',
-        // });
         /**
          * REF
          */
@@ -391,17 +343,6 @@ private publishWsDepthUpdates(fills: Fill[],price: string,side: 'buy' | 'sell',m
 private publishTradeMessage(fills: Fill[],userId: string,market: string){
    fills.forEach(fill => {
     
-    // RedisManager.getInstance().publishMessage(`trade@${market}`,{
-    //     stream: `trade@${market}`,
-    //     data: {
-    //         e: 'trade',
-    //         tradeId: fill.tradeId.toString(),
-    //         isBuyerMaker: fill.otherUserId === userId,//TODO: Verify with an example
-    //         price: fill.price.toString(),
-    //         executedQuantity: fill.quantity,
-    //         market, 
-    //     }
-    // })
     const payload = {
       stream: `trade@${market}`,
       data: {
@@ -463,197 +404,233 @@ private createDbTrades(fills: Fill[],side: 'buy' | 'sell',market: string){
      })
 }
 private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "buy" | "sell",executedQty: number,fills: Fill[]){
-   
+    
+    /**
+     * when incoming order is buy
+     * taker = buyer(userId)
+     * maker = seller(otherUserId)
+     */
+
     if(side === "buy"){
     fills.forEach(fill => {
-        //taker
-        const takerBalance = this.userBalance.get(userId);
-        if(!takerBalance)return;
-        //seller
-        const makerBalance = this.userBalance.get(fill.otherUserId);
-        if(!makerBalance)return;
+      
+        const takerQuoteBalance = this.getAssetBalance(userId,quoteAsset);
+        const takerBaseBalance = this.getAssetBalance(userId,baseAsset);
 
-        //----------------------------Quote Asset----------------------INR
-        //QuoteAsset is the INR
-
-        const takerQuoteBalance = takerBalance[quoteAsset];
-        if(!takerQuoteBalance)return;
-         
-        let makerQuoteBalance = makerBalance[quoteAsset];
-
-        if(!makerQuoteBalance){
-            makerBalance[quoteAsset] = {
-                available: 0,
-                lockedOut: 0,
-            }
-
-            makerQuoteBalance = makerBalance[quoteAsset];
-        }
+        const makerQuoteBalance = this.getAssetBalance(fill.otherUserId,quoteAsset);
+        const makerBaseBalance = this.getAssetBalance(fill.otherUserId,baseAsset);
 
 
+        const tradeValue = fill.price * fill.quantity;
 
-        //---------------------------Base Asset------------------------TATA
 
-        
-        const makerBaseBalance = makerBalance[baseAsset];
-        if(!makerBaseBalance)return;
-        //taker do not have any base asset
-        let takerBaseBalance = takerBalance[baseAsset];
-
-        if(!takerBaseBalance){
-            takerBalance[baseAsset] = {
-                available: 0,
-                lockedOut: 0,
-            }
-            takerBaseBalance = takerBalance[baseAsset];
-        }
 //Updating the quoteAsset balance
         //credit the quote balance of the maker
-        makerQuoteBalance.available = makerQuoteBalance.available + (fill.price) * (fill.quantity); 
+        makerQuoteBalance.available = makerQuoteBalance.available + tradeValue; 
         //remove the locked balance of the taker
-        takerQuoteBalance.lockedOut = takerQuoteBalance.lockedOut - (fill.quantity * fill.price);
+        takerQuoteBalance.lockedOut = takerQuoteBalance.lockedOut - tradeValue;
 //Updating the baseAsset balance
         
         //credit the base balance of the taker
         takerBaseBalance.available += (fill.quantity);
         //remove the locked balance of the maker
         makerBaseBalance.lockedOut -= (fill.quantity);
+
+
+        this.publishBalanceUpdate(userId,quoteAsset);
+        this.publishBalanceUpdate(userId,baseAsset);
+        this.publishBalanceUpdate(fill.otherUserId,quoteAsset);
+        this.publishBalanceUpdate(fill.otherUserId,baseAsset);
     })
    }else{
-    //selling side
-    //existing maker == buyer
-    //taker == seller
-    //debit from seller 
-    //credit to buyer
+     /**
+     * when incoming order is sell
+     * taker = seller(userId)
+     * maker = buyer(otherUserId)
+     */
 
    fills.forEach(fill => {
 
+       const takerQuoteBalance = this.getAssetBalance(userId,quoteAsset);
+        const takerBaseBalance = this.getAssetBalance(userId,baseAsset);
 
-        //taker
-        const takerBalance = this.userBalance.get(userId);
-        if(!takerBalance)return;
-        //seller
-        const makerBalance = this.userBalance.get(fill.otherUserId);
-        if(!makerBalance)return;
+        const makerQuoteBalance = this.getAssetBalance(fill.otherUserId,quoteAsset);
+        const makerBaseBalance = this.getAssetBalance(fill.otherUserId,baseAsset);
 
-        //-------------------Quote Asset(INR)-------------------------
-        //QuoteAsset is the INR
 
-        
-        const makerQuoteBalance = makerBalance[quoteAsset];
-        
-        if(!makerQuoteBalance)return;
-        //taker maynot have the quote balance
-        //maker must have quote balance
-        let takerQuoteBalance = takerBalance[quoteAsset];
+        const tradeValue = fill.price * fill.quantity;
 
-        if(!takerQuoteBalance){
-            takerBalance[quoteAsset] = {
-                available: 0,
-                lockedOut: 0,
-            }
-            takerQuoteBalance = takerBalance[quoteAsset];
-        }
-
-       //--------------------------Base Asset(TATA)-------------------
-       //taker must have base asset
-       //maker may or may not have the base asset
-
-        const takerBaseBalance = takerBalance[baseAsset];
-        
-        if(!takerBaseBalance)return;
-
-        let makerBaseBalance = makerBalance[baseAsset];
-        
-        if(!makerBaseBalance){
-            makerBalance[baseAsset] = {
-                available: 0,
-                lockedOut: 0,
-            }
-            makerBaseBalance = makerBalance[baseAsset];
-        }
-
-        //Updating the quote Asset(INR) balance
-         //taker gets money
-         takerQuoteBalance.available += (fill.price * fill.quantity);
-         //buyer debited money
-         makerQuoteBalance.lockedOut -= (fill.price * fill.quantity);
-        //Updating the base Asset(TATA) balance
-          //maker gets shares
+         takerQuoteBalance.available += tradeValue;
+         makerQuoteBalance.lockedOut -= tradeValue;
           makerBaseBalance.available += (fill.quantity);
-          //taker debited shares
           takerBaseBalance.lockedOut -= (fill.quantity);
+
+       this.publishBalanceUpdate(userId, quoteAsset);
+       this.publishBalanceUpdate(userId, baseAsset);
+       this.publishBalanceUpdate(fill.otherUserId, quoteAsset);
+       this.publishBalanceUpdate(fill.otherUserId, baseAsset);
    });
    }
 }
 
 
 private checkAndLockFunds(baseAsset:string,quoteAsset: string,price: string, quantity: string,side: "buy" | "sell",userId: string){
-    const userBalanceFund = this.userBalance.get(userId);
-            if(!userBalanceFund){
-                throw new Error("User balance does not exists");
-            }
-            const quoteAssetBalance = userBalanceFund[quoteAsset];
-             const baseAssetBalance = userBalanceFund[baseAsset];
+
+    const numericPrice = Number(price);
+    const numericQuantity = Number(quantity);
+
            
     if(side === "buy"){  
-        if(!quoteAssetBalance){
-                throw new Error(`User has no ${quoteAsset}`);
-            }
+        
+        const quoteBalance = this.getAssetBalance(userId,quoteAsset);
+        const requiredAmount = numericPrice * numericQuantity;
+            
         //user should have enough available >= qty*price
-        if((quoteAssetBalance.available) < (Number(price) * Number(quantity))){
+        if((quoteBalance.available) < requiredAmount){
             throw new Error("Insufficient Funds");
         }
          //if yes
-        //userBalance.available -= (qty*price)
-        //userBalance.locked += (qty*price)
-         quoteAssetBalance.available -= (Number(price) * Number(quantity));
-         quoteAssetBalance.lockedOut += (Number(price) * Number(quantity));
+         quoteBalance.available -= (requiredAmount);
+         quoteBalance.lockedOut += (requiredAmount);
         
     }else{
         
-            if(!baseAssetBalance){
-               throw new Error(`User has no ${baseAsset}`);
-            }
+        const baseBalance = this.getAssetBalance(userId,baseAsset);
+
         //user should have enough baseAsset available >= qty
-        if((baseAssetBalance?.available) >= Number(quantity)){
+        if((baseBalance.available) >= numericQuantity){
             //if yes
-        //userBalance.available -= (qty)
-        //userBalance.locked += (qty)
-            baseAssetBalance.available -= (Number(quantity));
-            baseAssetBalance.lockedOut += (Number(quantity));
+            baseBalance.available -= (numericQuantity);
+            baseBalance.lockedOut += (numericQuantity);
 
         }else{
             throw new Error("User has insufficient shares");
         }
     }
+
 }
 
-private onRamp(userId: string,amount: number,){
-   //find the user
-   //if not present create it in the map and store the amt
 
-   const user = this.userBalance.get(userId);
-   if(!user){
-    this.userBalance.set(userId,{
-        [BASE_CURRENCY]: {
-            available: amount,
-            lockedOut: 0,
-        }
-    });
-     return amount;
-   }else{
-    const balance = user[BASE_CURRENCY];
-    if(!balance){
-        user[BASE_CURRENCY] = {
-            available: amount,
-            lockedOut: 0,
-        }
-        return amount; 
+private ensureBalance(userId: string,asset: string){
+
+    if (!this.balances[userId]) {
+        this.balances[userId] = {};
     }
 
+    if (!this.balances[userId][asset]) {
+
+        this.balances[userId][asset] = {
+            available: 0,
+            lockedOut: 0
+        };
+
+    }
+
+
+    return this.balances[userId][asset];
+}
+private onRamp(
+    userId: string,
+    asset: "INR" | "TATA",
+    amount: number
+) {
+
+    if (amount <= 0) {
+
+        throw new Error(
+            "Invalid on-ramp amount"
+        );
+
+    }
+
+
+    if (
+        asset !== "INR" &&
+        asset !== "TATA"
+    ) {
+
+        throw new Error(
+            "Unsupported asset"
+        );
+
+    }
+
+
+    const balance =
+        this.ensureBalance(
+            userId,
+            asset
+        );
+
+
     balance.available += amount;
-    return balance.available;
+
+
+    this.publishBalanceUpdate(
+        userId,
+        asset
+    );
+
+
+    return {
+        asset,
+        available: balance.available,
+        locked: balance.lockedOut
+    };
    }
+
+
+private getAssetBalance(userId: string,asset: string){
+    const userBalance = this.balances[userId];
+
+    if(!userBalance){
+        throw new Error("User balance does not exist");
+    }
+
+    const assetBalance = userBalance[asset];
+    
+    if(!assetBalance){
+        throw new Error(`User's ${asset} balance does not exist`);
+    }
+
+    return assetBalance;
 }
+
+
+  private publishBalanceUpdate(userId: string,asset: string){
+
+    const balance = this.balances[userId]?.[asset];
+    
+    if(!balance)return;
+
+    RedisManager.getInstance().pushMessage({
+        type: BALANCE_UPDATE,
+        data: {
+            userId,
+            asset,
+            available: balance.available,
+            locked: balance.lockedOut,
+        }
+    }
+    )
+  }
+  
+  public async loadBalances(){
+
+    const balances = await prisma.balance.findMany();
+
+    for(const balance of balances){
+        if(!this.balances[balance.userId]){
+            this.balances[balance.userId] = {}
+        }
+
+        this.balances[balance.userId]![balance.asset] = {
+            available: Number(balance.available),
+            lockedOut: Number(balance.locked),
+        }
+    }
+    console.log(`Loaded ${balances.length} balances`);
+  }
+
 }
+

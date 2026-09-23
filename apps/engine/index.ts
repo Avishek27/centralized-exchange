@@ -16,11 +16,12 @@ import { createClient } from "redis";
 async function main(){
     
     const engine = new Engine();
+    await engine.init();
     const redisClient = createClient({
   url: process.env.REDIS_URL
 });;
     await redisClient.connect();
- console.log("Engine is runnning AF");
+ console.log("Engine is runnning");
     while(true){
        
         const response = await redisClient.rPop("messages" as string);

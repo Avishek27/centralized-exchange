@@ -41,6 +41,8 @@ export type SendToApi = {
 } | {
     type: typeof ON_RAMP_RESPONSE,
     payload: {
-        amount: string,
+        asset: string,
+        available: string,
+        locked: string,
     }
 }
