@@ -17,8 +17,7 @@ export const GET_OPEN_ORDER = "GET_OPEN_ORDER";
 export const CANCEL_ORDER = "CANCEL_ORDER";
 export const ONRAMP = "ON_RAMP";
 export const GET_DEPTH = "GET_DEPTH";
-
-
+export const GET_BALANCE = "GET_BALANCE";
 
 export type MessageToEngine = {
   type: typeof CREATE_ORDER,
@@ -50,6 +49,12 @@ export type MessageToEngine = {
     type: typeof ONRAMP,
     data: {
         userId: string,
+        asset: string,
         amount: number,
     }
-}
+} | {
+    type: typeof GET_BALANCE,
+    data: {
+        userId: string,
+    }
+} 

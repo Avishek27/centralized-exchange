@@ -266,6 +266,13 @@ For each item in the array:
       }
    }
 
-
+   public getSnapShot(){
+      return {
+        baseAsset: this.baseAsset,
+        quoteAsset: this.quoteAsset,
+        bids: this.bids,
+        asks: this.asks,
+    };
+   }
     
 }

@@ -1,9 +1,11 @@
 import { prisma } from "@repo/db";
 import { RedisManager } from "../RedisManager";
-import { CANCEL_ORDER, CREATE_ORDER, GET_DEPTH, GET_OPEN_ORDER, ONRAMP, type MessageFromApi } from "../types/fromApi";
-import { DEPTH_RESPONSE, ON_RAMP_RESPONSE, OPEN_ORDER_RESPONSE, ORDER_CANCELLED, ORDER_PLACED } from "../types/toApi";
+import { CANCEL_ORDER, CREATE_ORDER, GET_BALANCE, GET_DEPTH, GET_OPEN_ORDER, ONRAMP, type MessageFromApi } from "../types/fromApi";
+import { BALANCE_RESPONSE, DEPTH_RESPONSE, ON_RAMP_RESPONSE, OPEN_ORDER_RESPONSE, ORDER_CANCELLED, ORDER_FAILED, ORDER_PLACED } from "../types/toApi";
 import { BALANCE_UPDATE, ORDER_UPDATE, TRADE_ADDED } from "../types/toDB";
 import { OrderBook, type Fill, type Order } from "./OrderBook";
+import fs from "fs";
+
 
 interface AssetBalance{
     available: number,
@@ -18,6 +20,9 @@ interface UserBalance {
 
 
 export const BASE_CURRENCY = "INR";
+
+const SNAPSHOT_PATH =
+    "/app/data/snapshot.json";
 
 export class Engine{
 
@@ -35,18 +40,131 @@ private balances: {
     }
 
     public async init(){
-        await this.loadBalances();
-        console.log("Engine initialized with balances");
+        const snapshotLoaded =
+        this.loadOrderBookSnapshot();
+
+    if (!snapshotLoaded) {
+
+        this.orderBooks = [
+            new OrderBook(
+                "TATA",
+                "INR"
+            )
+        ];
     }
+
+    await this.loadBalances();
+
+    console.log(
+        "Engine initialized"
+    );
+
+
+    setInterval(() => {
+
+        this.saveSnapshot();
+
+    }, 3000);
+    }
+   
+    private loadOrderBookSnapshot() {
+
+    try {
+
+        if (!fs.existsSync(SNAPSHOT_PATH)) {
+            console.log(
+                "No orderbook snapshot found"
+            );
+
+            return false;
+        }
+
+        const rawSnapshot =
+            fs.readFileSync(
+                SNAPSHOT_PATH,
+                "utf-8"
+            );
+
+        const snapshot =
+            JSON.parse(rawSnapshot);
+
+        this.orderBooks =
+            snapshot.orderBooks.map(
+                (book: any) => {
+
+                    const orderBook =
+                        new OrderBook(
+                            book.baseAsset,
+                            book.quoteAsset
+                        );
+
+                    orderBook.bids =
+                        book.bids ?? [];
+
+                    orderBook.asks =
+                        book.asks ?? [];
+
+                    return orderBook;
+                }
+            );
+
+        console.log(
+            `Loaded ${this.orderBooks.length} orderbook(s) from snapshot`
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "Failed to load orderbook snapshot:",
+            error
+        );
+
+        return false;
+    }
+}
+
+
+private saveSnapshot() {
+
+    try {
+
+        const snapshot = {
+            orderBooks:
+                this.orderBooks.map(
+                    orderBook =>
+                        orderBook.getSnapShot()
+                )
+        };
+
+        fs.writeFileSync(
+            SNAPSHOT_PATH,
+            JSON.stringify(
+                snapshot,
+                null,
+                2
+            )
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Failed to save snapshot:",
+            error
+        );
+    }
+}
+
 
 public process({message,clientId}: {message: MessageFromApi,clientId: string}){
   switch (message.type){
       
     case CREATE_ORDER:
         
-    const {executedQty,fills,orderId} = this.createOrder(message.data.market,message.data.price,message.data.quantity,message.data.side,message.data.userId);
     //Now send to API via Redis
     try{
+        const {executedQty,fills,orderId} = this.createOrder(message.data.market,message.data.price,message.data.quantity,message.data.side,message.data.userId);
         RedisManager.getInstance().sendToApi(clientId,{
         type: ORDER_PLACED,
         payload: {
@@ -55,16 +173,15 @@ public process({message,clientId}: {message: MessageFromApi,clientId: string}){
             orderId
         }
      });
-    }catch(e){
-      console.log(e);
-
+    }catch(error){
+      
+      const errorMessage = error instanceof Error ? error.message : "Failed to place order";
+      console.error("Create Order Error: ", errorMessage);
       RedisManager.getInstance().sendToApi(clientId,{
-        type: ORDER_PLACED,
+        type: ORDER_FAILED,
         payload: {
-            executedQty: 0,
-            fills: [],
-            orderId,
-        }
+          error: errorMessage
+         }
       })
     }
      break;
@@ -128,6 +245,19 @@ public process({message,clientId}: {message: MessageFromApi,clientId: string}){
         }
        })
        break;
+
+     case GET_BALANCE: 
+        const balances = this.getBalances(message.data.userId);
+
+        RedisManager.getInstance().sendToApi(
+            clientId,
+            {
+                type: BALANCE_RESPONSE,
+                payload: {
+                    balances
+                }
+            }
+        )
   }
      
 }
@@ -186,11 +316,12 @@ private cancelOrder(market: string,orderId: string){
 
      this.publishBalanceUpdate(
         order.userId,
-        quoteAsset
+        baseAsset
     );
    
    }
    this.sendUpdatedDepthAt(order.price.toString(),market);
+   this.saveSnapshot();
     return order.orderId;
 }
 
@@ -237,14 +368,14 @@ private createOrder(market: string,price: string,quantity: string,side: "buy" | 
         }
 
         const { executedQty,fills } = orderbook.addOrder(order);
-
-        this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills);
+        this.updateBalance(userId,baseAsset,quoteAsset,side,executedQty,fills,order.price);
         this.createDbTrades(fills,side,market);
         this.updateDbUpdates(fills,order,executedQty,market);
         console.log("DEPTH UPDATE BEING PUBLISHED:");
         this.publishWsDepthUpdates(fills,price,side,market);
         this.publishTradeMessage(fills,userId,market);
-        
+        this.saveSnapshot();
+
          return {
             executedQty,
             fills,
@@ -403,7 +534,7 @@ private createDbTrades(fills: Fill[],side: 'buy' | 'sell',market: string){
         })
      })
 }
-private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "buy" | "sell",executedQty: number,fills: Fill[]){
+private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "buy" | "sell",executedQty: number,fills: Fill[],orderPrice: number){
     
     /**
      * when incoming order is buy
@@ -415,20 +546,38 @@ private updateBalance(userId:string,baseAsset: string,quoteAsset: string,side: "
     fills.forEach(fill => {
       
         const takerQuoteBalance = this.getAssetBalance(userId,quoteAsset);
-        const takerBaseBalance = this.getAssetBalance(userId,baseAsset);
+        const takerBaseBalance = this.ensureBalance(userId,baseAsset);
 
-        const makerQuoteBalance = this.getAssetBalance(fill.otherUserId,quoteAsset);
+        const makerQuoteBalance = this.ensureBalance(fill.otherUserId,quoteAsset);
         const makerBaseBalance = this.getAssetBalance(fill.otherUserId,baseAsset);
 
 
-        const tradeValue = fill.price * fill.quantity;
+        const actualTradeValue = fill.price * fill.quantity;
+        const reservedValue = orderPrice * fill.quantity;
+        const refund = reservedValue - actualTradeValue;
 
+        if (fill.price > orderPrice) {
+  throw new Error(
+    `Invalid execution price: fill ${fill.price} exceeds buy limit ${orderPrice}`
+  );
+}
+
+if (
+  takerQuoteBalance.lockedOut <
+  reservedValue
+) {
+  throw new Error(
+    `Insufficient locked INR. Locked=${takerQuoteBalance.lockedOut}, required=${reservedValue}`
+  );
+}
 
 //Updating the quoteAsset balance
         //credit the quote balance of the maker
-        makerQuoteBalance.available = makerQuoteBalance.available + tradeValue; 
+        makerQuoteBalance.available = makerQuoteBalance.available + actualTradeValue; 
         //remove the locked balance of the taker
-        takerQuoteBalance.lockedOut = takerQuoteBalance.lockedOut - tradeValue;
+        takerQuoteBalance.lockedOut = takerQuoteBalance.lockedOut - reservedValue;
+        //price improvement goes back to taker
+        takerQuoteBalance.available += refund;
 //Updating the baseAsset balance
         
         //credit the base balance of the taker
@@ -492,7 +641,9 @@ private checkAndLockFunds(baseAsset:string,quoteAsset: string,price: string, qua
          //if yes
          quoteBalance.available -= (requiredAmount);
          quoteBalance.lockedOut += (requiredAmount);
-        
+         //update balance
+         this.publishBalanceUpdate(userId,quoteAsset);
+
     }else{
         
         const baseBalance = this.getAssetBalance(userId,baseAsset);
@@ -506,6 +657,8 @@ private checkAndLockFunds(baseAsset:string,quoteAsset: string,price: string, qua
         }else{
             throw new Error("User has insufficient shares");
         }
+        //update balance
+         this.publishBalanceUpdate(userId,baseAsset);
     }
 
 }
@@ -614,7 +767,23 @@ private getAssetBalance(userId: string,asset: string){
     }
     )
   }
+  private getBalances(userId: string){
+    return {
+        INR: 
+           this.balances[userId]?.["INR"]?? {
+            available: 0,
+            lockedOut: 0
+           },
+        TATA: 
+           this.balances[userId]?.["TATA"]?? {
+            available: 0,
+            lockedOut: 0
+           }
+    }
+  }
+
   
+
   public async loadBalances(){
 
     const balances = await prisma.balance.findMany();

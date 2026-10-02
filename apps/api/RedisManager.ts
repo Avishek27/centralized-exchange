@@ -5,7 +5,7 @@ the publisher for the message queue to send the messages to the Engine.
 */
 
 import { createClient, type RedisClientType } from "redis";
-import type { MessageToEngine } from "./types/engine";
+import type { MessageToEngine } from "./types/toEngine";
 import type { MessageFromEngine } from "./types/orderBook";
 
 

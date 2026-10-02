@@ -8,11 +8,13 @@ c. GetDepth: 2 arrays each of [String,String].
 d. GetOpenOrders: a combined array consisting of both bids and asks
 e. OnRamp: return the final amt in the user's balance.
 */
-export const ORDER_PLACED = "ORDER_PLACED";
-export const DEPTH_RESPONSE = "DEPTH_RESPONSE";
-export const ON_RAMP_RESPONSE = "ONRAMP_RESPONSE";
-export const OPEN_ORDER_RESPONSE = "OPEN_ORDER_RESPONSE";
-export const ORDER_CANCELLED = "ORDER_CANCELLED";
+export const ORDER_PLACED = "ORDER_PLACED" as const;
+export const DEPTH_RESPONSE = "DEPTH_RESPONSE" as const;
+export const ON_RAMP_RESPONSE = "ONRAMP_RESPONSE" as const;
+export const OPEN_ORDER_RESPONSE = "OPEN_ORDER_RESPONSE" as const;
+export const ORDER_CANCELLED = "ORDER_CANCELLED" as const;
+export const ORDER_FAILED = "ORDER_FAILED" as const;
+
 
 export interface Order{ 
    userId: string;
@@ -58,4 +60,10 @@ export type MessageFromEngine = {
     payload: {
         amount: number,
     }
+} | {
+    type: typeof ORDER_FAILED;
+    
+      payload: {
+        error: string;
+      };
 }

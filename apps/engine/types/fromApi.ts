@@ -17,7 +17,7 @@ export const GET_OPEN_ORDER = "GET_OPEN_ORDER";
 export const CANCEL_ORDER = "CANCEL_ORDER";
 export const ONRAMP = "ON_RAMP";
 export const GET_DEPTH = "GET_DEPTH";
-
+export const GET_BALANCE = "GET_BALANCE";
 
 
 export type MessageFromApi = {
@@ -52,5 +52,10 @@ export type MessageFromApi = {
         userId: string,
         asset: "INR" | "TATA",
         amount: number,
+    }
+} | {
+    type: typeof GET_BALANCE,
+    data: {
+        userId: string,
     }
 }

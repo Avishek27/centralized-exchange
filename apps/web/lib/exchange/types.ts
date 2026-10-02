@@ -33,3 +33,24 @@
   trades: number;
 };
 
+
+export type AssetBalance = {
+   available: number,
+   locked: number,
+}
+
+export type UserBalances = {
+   balances: {
+      INR: AssetBalance,
+      TATA: AssetBalance
+   }
+}
+
+export type OpenOrder = {
+  orderId: string;
+  market: string;
+  price: string | number;
+  quantity: string | number;
+  filled: number;
+  side: "buy" | "sell";
+};

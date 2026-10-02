@@ -23,6 +23,11 @@ export const RegisterSchema = z.object({
 });
 
 export const BalanceSchema = z.object({
-    amount: z.number(),
+    asset: z.string(),
+    amount: z
+            .number()
+            .positive(
+                "Amount must be greater than 0"
+            ),
 })
 

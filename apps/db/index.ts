@@ -1,5 +1,5 @@
 import { createClient } from "redis";
-import { ORDER_UPDATE, TRADE_ADDED, type dbMessage } from "./types/fromEngine";
+import { BALANCE_UPDATE, ORDER_UPDATE, TRADE_ADDED, type dbMessage } from "./types/fromEngine";
 import { prisma } from "@repo/db";
 
 
@@ -255,6 +255,32 @@ async function main() {
                     orderId
                 );
             }
+        }
+
+        if(data.type == BALANCE_UPDATE){
+
+          const {asset,available,locked,userId} = data.data;
+
+          await prisma.balance.upsert({
+            where: {
+              userId_asset: {
+                userId,
+                asset
+              }
+            },
+            update: {
+              available,
+              locked
+            },
+            create: {
+              userId,
+              asset,
+              available,
+              locked
+            }
+          });
+
+          console.log(`Balance updated of  ${userId}`)
         }
     }
 }

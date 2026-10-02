@@ -14,8 +14,8 @@ export const DEPTH_RESPONSE = "DEPTH_RESPONSE";
 export const ON_RAMP_RESPONSE = "ONRAMP_RESPONSE";
 export const OPEN_ORDER_RESPONSE = "OPEN_ORDER_RESPONSE";
 export const ORDER_CANCELLED = "ORDER_CANCELLED";
-
-
+export const BALANCE_RESPONSE = "BALANCE_RESPONSE";
+export const ORDER_FAILED = "ORDER_FAILED";
 
 export type SendToApi = {
     type: typeof ORDER_PLACED,
@@ -45,4 +45,20 @@ export type SendToApi = {
         available: string,
         locked: string,
     }
+} | {
+    type: typeof BALANCE_RESPONSE,
+    payload: {
+        balances :{
+            [asset: string]: {
+                available: number,
+                lockedOut: number,
+            }
+        }
+    }
+} | {
+    type: typeof ORDER_FAILED;
+
+    payload: {
+        error: string;
+    };
 }

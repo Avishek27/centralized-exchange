@@ -39,9 +39,9 @@ services:
     build: 
       context: .
       dockerfile: apps/engine/Dockerfile
-
+      
     container_name: exchange-engine
-
+    
     restart: unless-stopped
 
     depends_on:
@@ -49,6 +49,11 @@ services:
 
     environment:
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: ${DATABASE_URL}
+    
+    volumes:
+    - engine-data:/app/data
+
 
 
   websocket:
@@ -89,4 +94,5 @@ services:
 
 volumes:
   redis_data:
+  engine-data:
 

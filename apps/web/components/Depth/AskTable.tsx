@@ -1,52 +1,115 @@
+"use client";
 
+import { useMemo } from "react";
 
-
-const AskTable = ({asks}:{asks: [string,string][]}) => {
-     let currentTotal = 0;
-    const relevantAsks = asks.slice(0, 15);
-    relevantAsks.reverse();
-    const asksWithTotal: [string, string, number][] = relevantAsks.map(([price, quantity]) => [price, quantity, currentTotal += Number(quantity)]);
-    const maxTotal = relevantAsks.reduce((acc, [_, quantity]) => acc + Number(quantity), 0);
-    asksWithTotal.reverse();
-    
-   return <div>
-        {asksWithTotal.map(([price, quantity, total]) => <Ask maxTotal={maxTotal} key={price} price={price} quantity={quantity} total={total} />)}
-    </div>
+interface AskTableProps {
+  asks: [string, string][];
 }
 
-function Ask({price, quantity, total, maxTotal}: {price: string, quantity: string, total: number, maxTotal: number}) {
-    return <div
-    style={{
-        display: "flex",
-        position: "relative",
-        width: "100%",
-        backgroundColor: "transparent",
-        overflow: "hidden",
-    }}
->
-    <div
-        style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: `${(100 * total) / maxTotal}%`,
-        height: "100%",
-        background: "rgba(228, 75, 68, 0.325)",
-        transition: "width 0.3s ease-in-out",
-        }}
-    ></div>
-    <div className="flex justify-between text-xs w-full">
-        <div>
-            {price}
-        </div>
-        <div>
-            {quantity}
-        </div>
-        <div>
-            {total?.toFixed(2)}
-        </div>
+const AskTable = ({ asks }: AskTableProps) => {
+  const visibleAsks = useMemo(() => {
+    let cumulative = 0;
+
+    const rows = asks
+      .slice(0, 9)
+      .map(([price, quantity]) => {
+        cumulative += Number(quantity);
+
+        return {
+          price,
+          quantity,
+          total: cumulative,
+        };
+      });
+
+    // Best ask should be closest
+    // to the center price
+    return rows.reverse();
+  }, [asks]);
+
+  const maxQuantity = Math.max(
+    ...visibleAsks.map((row) =>
+      Number(row.quantity)
+    ),
+    1
+  );
+
+  return (
+    <div className="flex shrink-0 flex-col overflow-hidden">
+      {visibleAsks.map((row) => {
+        const percentage = Math.min(
+          (Number(row.quantity) / maxQuantity) * 100,
+          100
+        );
+
+        return (
+          <div
+            key={row.price}
+            className="
+              relative
+              grid
+              h-7
+              shrink-0
+              grid-cols-3
+              items-center
+              overflow-hidden
+              px-4
+              text-xs
+            "
+          >
+
+            {/* Red depth background */}
+
+            <div
+              className="
+                absolute
+                inset-y-0
+                right-0
+                bg-red-500/[0.13]
+              "
+              style={{
+                width: `${percentage}%`,
+              }}
+            />
+
+            <span
+              className="
+                relative
+                z-10
+                font-medium
+                text-red-400
+              "
+            >
+              {Number(row.price).toFixed(2)}
+            </span>
+
+            <span
+              className="
+                relative
+                z-10
+                text-right
+                text-zinc-300
+              "
+            >
+              {Number(row.quantity).toFixed(2)}
+            </span>
+
+            <span
+              className="
+                relative
+                z-10
+                text-right
+                text-zinc-400
+              "
+            >
+              {row.total.toFixed(2)}
+            </span>
+
+          </div>
+        );
+      })}
     </div>
-    </div>
-}
+  );
+};
 
 export default AskTable;
