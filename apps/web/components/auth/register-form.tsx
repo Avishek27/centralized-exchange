@@ -1,16 +1,21 @@
-"use client"
+"use client";
 
-import { useForm, Controller } from "react-hook-form";
-import CardWrapper from "./card-wrapper";
-import * as z from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { RegisterSchema } from "@/schemas";
-import { Input } from "@workspace/ui/components/input";
 import { useState, useTransition } from "react";
+import { Controller, useForm } from "react-hook-form";
+import * as z from "zod";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+
+import CardWrapper from "./card-wrapper";
 import FormError from "./form-error";
 import FormSuccess from "./form-success";
-import { Button } from "@workspace/ui/components/button";
+
+import { RegisterSchema } from "@/schemas";
 import Register from "@/actions/register";
+
+import { Input } from "@workspace/ui/components/input";
+import { Button } from "@workspace/ui/components/button";
+
 import {
     Field,
     FieldError,
@@ -18,155 +23,258 @@ import {
     FieldLabel,
 } from "@workspace/ui/components/field";
 
+
 const RegisterForm = () => {
-    
     const [isPending, startTransition] = useTransition();
-    const [success, setSuccess] = useState<string | undefined>("");
-    const [error, setError] = useState<string | undefined>("");
+
+    const [success, setSuccess] =
+        useState<string | undefined>();
+
+    const [error, setError] =
+        useState<string | undefined>();
+
 
     const form = useForm<z.infer<typeof RegisterSchema>>({
         resolver: zodResolver(RegisterSchema),
+
         defaultValues: {
             name: "",
             email: "",
             password: "",
-        }
+        },
     });
 
 
-    const onSubmitHandler = (values: z.infer<typeof RegisterSchema>) => {
-        setError("");
-        setSuccess("");
+    const onSubmitHandler = (
+        values: z.infer<typeof RegisterSchema>
+    ) => {
+        setError(undefined);
+        setSuccess(undefined);
 
-        startTransition(() => {
-            Register(values).then((data) => {
-                setSuccess(data?.success);
-                setError(data?.error);
-            });
+        startTransition(async () => {
+            const data = await Register(values);
+
+            setSuccess(data?.success);
+            setError(data?.error);
         });
     };
 
 
+    const inputStyles = `
+        h-12
+        rounded-xl
+
+        border
+        border-[#2b2d34]
+
+        bg-[#1c1d23]
+        px-4
+
+        text-[15px]
+        text-white
+
+        placeholder:text-[#777b89]
+
+        transition-colors
+
+        hover:border-[#383b45]
+
+        focus-visible:border-blue-500
+        focus-visible:bg-[#1c1d23]
+        focus-visible:text-white
+        focus-visible:ring-1
+        focus-visible:ring-blue-500/30
+
+        disabled:cursor-not-allowed
+        disabled:opacity-60
+    `;
+
+
     return (
-        <div>
-            <CardWrapper 
-                backButtonHref="/auth/login"
-                backButtonLabel="Already have an account?"
-                headerLabel="Welcome"
-                showSocial
+        <CardWrapper
+            backButtonHref="/auth/login"
+            backButtonLabel="Already have an account? Log in"
+            headerLabel="Create account"
+            showSocial
+        >
+            <form
+                onSubmit={form.handleSubmit(onSubmitHandler)}
+                className="w-full"
             >
-                <form
-                    className="space-y-4"
-                    onSubmit={form.handleSubmit(onSubmitHandler)}
-                >
-                    <FieldGroup>
+                <FieldGroup className="space-y-3">
 
-                        <Controller
-                            name="name"
-                            control={form.control}
-                            render={({ field, fieldState }) => (
-                                <Field data-invalid={fieldState.invalid}>
-                                    <FieldLabel htmlFor="register-name">
-                                        Name
-                                    </FieldLabel>
+                    {/* NAME */}
+                    <Controller
+                        name="name"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                            <Field className="space-y-2">
 
-                                    <Input
-                                        {...field}
-                                        id="register-name"
-                                        type="text"
-                                        placeholder="Avishek Saha"
-                                        autoComplete="name"
-                                        disabled={isPending}
-                                        aria-invalid={fieldState.invalid}
+                                <FieldLabel
+                                    htmlFor="register-name"
+                                    className="
+                                        text-sm
+                                        font-medium
+                                        text-[#9296a5]
+                                    "
+                                >
+                                    Name
+                                </FieldLabel>
+
+                                <Input
+                                    {...field}
+                                    id="register-name"
+                                    type="text"
+                                    placeholder="Your name"
+                                    autoComplete="name"
+                                    disabled={isPending}
+                                    aria-invalid={fieldState.invalid}
+                                    className={inputStyles}
+                                />
+
+                                {fieldState.invalid && (
+                                    <FieldError
+                                        errors={[fieldState.error]}
                                     />
+                                )}
 
-                                    {fieldState.invalid && (
-                                        <FieldError
-                                            errors={[fieldState.error]}
-                                        />
-                                    )}
-                                </Field>
-                            )}
-                        />
+                            </Field>
+                        )}
+                    />
 
 
-                        <Controller
-                            name="email"
-                            control={form.control}
-                            render={({ field, fieldState }) => (
-                                <Field data-invalid={fieldState.invalid}>
-                                    <FieldLabel htmlFor="register-email">
-                                        Email
-                                    </FieldLabel>
+                    {/* EMAIL */}
+                    <Controller
+                        name="email"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                            <Field className="space-y-2">
 
-                                    <Input
-                                        {...field}
-                                        id="register-email"
-                                        type="email"
-                                        placeholder="you@example.com"
-                                        autoComplete="email"
-                                        disabled={isPending}
-                                        aria-invalid={fieldState.invalid}
+                                <FieldLabel
+                                    htmlFor="register-email"
+                                    className="
+                                        text-sm
+                                        font-medium
+                                        text-[#9296a5]
+                                    "
+                                >
+                                    Email
+                                </FieldLabel>
+
+                                <Input
+                                    {...field}
+                                    id="register-email"
+                                    type="email"
+                                    placeholder="you@example.com"
+                                    autoComplete="email"
+                                    disabled={isPending}
+                                    aria-invalid={fieldState.invalid}
+                                    className={inputStyles}
+                                />
+
+                                {fieldState.invalid && (
+                                    <FieldError
+                                        errors={[fieldState.error]}
                                     />
+                                )}
 
-                                    {fieldState.invalid && (
-                                        <FieldError
-                                            errors={[fieldState.error]}
-                                        />
-                                    )}
-                                </Field>
-                            )}
-                        />
+                            </Field>
+                        )}
+                    />
 
 
-                        <Controller
-                            name="password"
-                            control={form.control}
-                            render={({ field, fieldState }) => (
-                                <Field data-invalid={fieldState.invalid}>
-                                    <FieldLabel htmlFor="register-password">
-                                        Password
-                                    </FieldLabel>
+                    {/* PASSWORD */}
+                    <Controller
+                        name="password"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                            <Field className="space-y-2">
 
-                                    <Input
-                                        {...field}
-                                        id="register-password"
-                                        type="password"
-                                        placeholder="Create a password"
-                                        autoComplete="new-password"
-                                        disabled={isPending}
-                                        aria-invalid={fieldState.invalid}
+                                <FieldLabel
+                                    htmlFor="register-password"
+                                    className="
+                                        text-sm
+                                        font-medium
+                                        text-[#9296a5]
+                                    "
+                                >
+                                    Password
+                                </FieldLabel>
+
+                                <Input
+                                    {...field}
+                                    id="register-password"
+                                    type="password"
+                                    placeholder="Create a password"
+                                    autoComplete="new-password"
+                                    disabled={isPending}
+                                    aria-invalid={fieldState.invalid}
+                                    className={inputStyles}
+                                />
+
+                                {fieldState.invalid && (
+                                    <FieldError
+                                        errors={[fieldState.error]}
                                     />
+                                )}
 
-                                    {fieldState.invalid && (
-                                        <FieldError
-                                            errors={[fieldState.error]}
-                                        />
-                                    )}
-                                </Field>
-                            )}
-                        />
+                            </Field>
+                        )}
+                    />
 
 
-                        <FormError label={error} />
+                    {/* STATUS MESSAGES */}
+                    {(error || success) && (
+                        <div className="space-y-2">
 
-                        <FormSuccess label={success} />
+                            <FormError
+                                label={error}
+                            />
+
+                            <FormSuccess
+                                label={success}
+                            />
+
+                        </div>
+                    )}
 
 
-                        <Button
-                            variant="default"
-                            className="w-full cursor-pointer"
-                            type="submit"
-                            size="lg"
-                            disabled={isPending}
-                        >
-                            {isPending ? "Creating account..." : "Create an account"}
-                        </Button>
+                    {/* SUBMIT BUTTON */}
+                    <Button
+                        type="submit"
+                        size="lg"
+                        disabled={isPending}
+                        className="
+                            mt-2
+                            h-12
+                            w-full
 
-                    </FieldGroup>
-                </form>
-            </CardWrapper>
-        </div>
+                            rounded-xl
+
+                            bg-white
+                            text-black
+
+                            text-sm
+                            font-semibold
+
+                            cursor-pointer
+                            transition-all
+
+                            hover:bg-neutral-200
+
+                            disabled:cursor-not-allowed
+                            disabled:bg-[#222329]
+                            disabled:text-[#777b89]
+                        "
+                    >
+                        {isPending
+                            ? "Creating account..."
+                            : "Create account"}
+                    </Button>
+
+                </FieldGroup>
+            </form>
+        </CardWrapper>
     );
 };
 

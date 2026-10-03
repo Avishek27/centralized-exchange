@@ -17,7 +17,13 @@ interface CardWrapperProps{
 const CardWrapper = ({children,showSocial,backButtonHref,backButtonLabel,headerLabel}:CardWrapperProps) => {
     
     return  (
-       <Card className="w-100 shadow-md bg-white">
+       <Card className="
+    rounded-2xl
+    border
+    border-[#24262d]
+    bg-[#131419]
+    p-8
+    shadow-xl">
           <CardHeader>
             <Header label={headerLabel}/>
           </CardHeader>

@@ -18,8 +18,8 @@ const Header = ({label}: HeaderProps) => {
    
     return (
        <div className="flex flex-col items-center justify-center space-y-4">
-         <h1 className={cn("text-3xl text-black font-bold",font.className)}>Wealthlane</h1>
-         <p className="text-black">{label}</p>
+         <h1 className={cn("text-3xl text-white font-bold",font.className)}>Finora</h1>
+         <p className="text-white">{label}</p>
        </div>
     )
 }
