@@ -56,17 +56,16 @@ export default function Page() {
       {/* LEFT IMAGE CARD */}
       <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111319] shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
 
-        <div className="relative aspect-[4/3] w-full">
-
-          <Image
-            src="/images/trading-dashboard.png"
-            alt="Trading dashboard"
-            fill
-            priority
-            className="object-cover"
-          />
-
-        </div>
+        
+        <div className="relative w-full aspect-video">
+  <Image
+    src="/images/trading_dashboard.png"
+    alt="Trading dashboard"
+    fill
+    sizes="100vw"
+    className="object-contain"
+  />
+</div>
 
       </div>
 
