@@ -1,5 +1,4 @@
 
-const BASE_URL = "ws://localhost:3001";
 
 /**
  * Because the SignallingManager should not itself decide what the UI does with every message. 
@@ -38,7 +37,13 @@ export class SignallingManager{
     } = {};//used for which component wants which data field
    //Pvt because the new SignallingManager() should not be called everywhere throughout.
    private constructor(){
-     this.ws = new WebSocket(BASE_URL);
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+
+  if (!wsUrl) {
+    throw new Error("NEXT_PUBLIC_WS_URL is not defined");
+  }
+
+  this.ws = new WebSocket(wsUrl);
      this.init();
    }
 

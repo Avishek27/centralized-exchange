@@ -7,12 +7,12 @@ export type UserBalances = {
   balances: {
     INR: {
       available: number;
-      locked: number;
+      lockedOut: number;
     };
 
     TATA: {
       available: number;
-      locked: number;
+      lockedOut: number;
     };
   };
 };
